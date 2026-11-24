@@ -17,16 +17,14 @@ end
 local roundStarted = makeRemote("RoundStarted")
 local submitAction = makeRemote("SubmitAction")
 local roundResult = makeRemote("RoundResult")
+local requestRound = makeRemote("RequestRound")
 
 local lastSubmit: { [number]: number } = {}
 
-local function sendRound(player: Player)
-	roundStarted:FireClient(player, TakerService.startRound(player.UserId))
-end
-
-local function onPlayerAdded(player: Player)
-	sendRound(player)
-end
+-- The client asks for a round: it gets its open one again, or a fresh one if none is open.
+requestRound.OnServerEvent:Connect(function(player: Player)
+	roundStarted:FireClient(player, TakerService.requestRound(player.UserId))
+end)
 
 local function onPlayerRemoving(player: Player)
 	TakerService.removePlayer(player.UserId)
@@ -46,13 +44,6 @@ submitAction.OnServerEvent:Connect(function(player: Player, roundId: unknown, ac
 
 	local submitted = TakerService.submitAction(player.UserId, roundId, action)
 	roundResult:FireClient(player, submitted)
-	if submitted.ok then
-		sendRound(player) -- next round starts right after settlement
-	end
 end)
 
-Players.PlayerAdded:Connect(onPlayerAdded)
 Players.PlayerRemoving:Connect(onPlayerRemoving)
-for _, player in Players:GetPlayers() do
-	task.spawn(onPlayerAdded, player)
-end

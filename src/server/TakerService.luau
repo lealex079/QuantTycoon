@@ -26,13 +26,16 @@ export type Settlement = {
 	bestAction: TakerMath.Action,
 	goodCall: boolean,
 	streak: number,
+	streakTarget: number?, -- good calls needed for the next tier; nil at the top tier
 	newTier: number?, -- set only when this call promoted the player
+	sessionPnl: number, -- running P&L since the player joined
 }
 
 export type SubmitResult = { ok: boolean, reason: string?, result: Settlement? }
 
 type Round = {
 	id: number,
+	tier: number,
 	seen: { number },
 	hidden: { number },
 	bid: number,
@@ -43,6 +46,7 @@ type Round = {
 type PlayerState = {
 	tier: number,
 	streak: number,
+	sessionPnl: number,
 	nextRoundId: number,
 	round: Round?,
 }
@@ -61,7 +65,7 @@ local TakerService = {}
 local function getState(key: number): PlayerState
 	local state = players[key]
 	if not state then
-		state = { tier = 1, streak = 0, nextRoundId = 1, round = nil }
+		state = { tier = 1, streak = 0, sessionPnl = 0, nextRoundId = 1, round = nil }
 		players[key] = state
 	end
 	return state
@@ -73,6 +77,18 @@ local function sum(values: { number }): number
 		total += v
 	end
 	return total
+end
+
+-- copy seen so the client-facing table shares nothing with stored state
+local function visibleOf(round: Round): Visible
+	return {
+		roundId = round.id,
+		tier = round.tier,
+		seen = table.clone(round.seen),
+		hiddenCount = #round.hidden,
+		bid = round.bid,
+		ask = round.ask,
+	}
 end
 
 function TakerService.startRound(key: number): Visible
@@ -94,17 +110,26 @@ function TakerService.startRound(key: number): Visible
 
 	local id = state.nextRoundId
 	state.nextRoundId += 1
-	state.round = { id = id, seen = seen, hidden = hidden, bid = quote.bid, ask = quote.ask, answered = false }
-
-	-- copy seen so the client-facing table shares nothing with stored state
-	return {
-		roundId = id,
+	local round: Round = {
+		id = id,
 		tier = state.tier,
-		seen = table.clone(seen),
-		hiddenCount = hiddenCount,
+		seen = seen,
+		hidden = hidden,
 		bid = quote.bid,
 		ask = quote.ask,
+		answered = false,
 	}
+	state.round = round
+	return visibleOf(round)
+end
+
+-- The player's open unanswered round is resent as-is; otherwise a new round starts.
+function TakerService.requestRound(key: number): Visible
+	local round = getState(key).round
+	if round and not round.answered then
+		return visibleOf(round)
+	end
+	return TakerService.startRound(key)
 end
 
 local function reject(reason: string): SubmitResult
@@ -148,6 +173,9 @@ function TakerService.submitAction(key: number, roundId: any, action: any): Subm
 		state.streak = 0
 	end
 
+	local pnl = TakerMath.settle(taken, round.bid, round.ask, trueTotal)
+	state.sessionPnl += pnl
+
 	return {
 		ok = true,
 		reason = nil,
@@ -156,12 +184,14 @@ function TakerService.submitAction(key: number, roundId: any, action: any): Subm
 			trueTotal = trueTotal,
 			hidden = table.clone(round.hidden),
 			action = taken,
-			pnl = TakerMath.settle(taken, round.bid, round.ask, trueTotal),
+			pnl = pnl,
 			edge = TakerMath.edge(taken, fair, round.bid, round.ask),
 			bestAction = best,
 			goodCall = goodCall,
 			streak = state.streak,
+			streakTarget = if LevelConfig.tiers[state.tier + 1] then LevelConfig.promotion.goodCalls else nil,
 			newTier = newTier,
+			sessionPnl = state.sessionPnl,
 		},
 	}
 end

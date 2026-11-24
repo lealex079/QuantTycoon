@@ -106,6 +106,41 @@ do
 	report("startRound has no hidden fields", clean)
 end
 
+-- 7. requestRound resends the open round (not re-rolled), starts a new one once answered
+do
+	local first = TakerService.requestRound(9007)
+	local again = TakerService.requestRound(9007)
+	local same = again.roundId == first.roundId and again.tier == first.tier
+		and again.hiddenCount == first.hiddenCount and again.bid == first.bid and again.ask == first.ask
+		and table.concat(again.seen, ",") == table.concat(first.seen, ",")
+	-- the resend is a copy: tampering with it must not change the stored round
+	table.insert(again.seen, 99)
+	local third = TakerService.requestRound(9007)
+	same = same and #third.seen == #first.seen
+	local settled = TakerService.submitAction(9007, first.roundId, "skip")
+	local following = TakerService.requestRound(9007)
+	local nextAgain = TakerService.requestRound(9007)
+	report("requestRound resends open round", same and settled.ok and following.roundId == first.roundId + 1
+		and nextAgain.roundId == following.roundId)
+end
+
+-- 8. session P&L accumulates across rounds on the server
+do
+	local expected = 0
+	local last = 0
+	for _ = 1, 3 do
+		local v = TakerService.requestRound(9008)
+		local r = TakerService.submitAction(9008, v.roundId, "buy").result
+		if r then
+			expected += r.pnl
+			last = r.sessionPnl
+		end
+	end
+	report("sessionPnl accumulates", math.abs(last - expected) < 1e-9)
+end
+
+TakerService.removePlayer(9007)
+TakerService.removePlayer(9008)
 TakerService.removePlayer(9001)
 TakerService.removePlayer(9002)
 TakerService.removePlayer(9003)
