@@ -32,6 +32,11 @@ TOL_MAX = 3.5
 HALF_SPREADS = np.arange(0.25, 6.0 + 1e-9, 0.25)
 TIGHT = 0.5
 
+# Part 1: full curves for these (mode, dice, hidden)
+CURVE_CONFIGS = [(4, 3, 1), (4, 4, 1), (4, 4, 3), (4, 5, 4), (3, 4, 2)]
+# Part 2: score columns
+SCORE_HS = [0.5, 1.0, 1.75, 2.5, 3.5, 5.0]
+
 # (dice, hidden counts) from the taker tiers in DESIGN.md
 SETUPS = [
     (3, [1, 2]),
@@ -65,6 +70,7 @@ def simulate(rng: np.random.Generator, mode: int, dice: int, hidden: int, rounds
     means = np.empty(len(HALF_SPREADS))
     sds = np.empty(len(HALF_SPREADS))
     fills = np.empty(len(HALF_SPREADS))
+    pnl_all = np.empty((rounds, len(HALF_SPREADS)))  # per-round P&L, common random numbers across h
     for i, h in enumerate(HALF_SPREADS):
         bid = fair - h
         ask = fair + h
@@ -81,10 +87,11 @@ def simulate(rng: np.random.Generator, mode: int, dice: int, hidden: int, rounds
             pnl = pnl + (inf_buy * (ask[:, None] - t)).sum(axis=1) + (inf_sell * (t - bid[:, None])).sum(axis=1)
             n_fills = n_fills + inf_buy.sum(axis=1) + inf_sell.sum(axis=1)
 
+        pnl_all[:, i] = pnl
         means[i] = pnl.mean()
         sds[i] = pnl.std()
         fills[i] = n_fills.mean()
-    return {"mean": means, "sd": sds, "fills": fills}
+    return {"mean": means, "sd": sds, "fills": fills, "pnl": pnl_all}
 
 
 def analyse(r: dict) -> dict:
@@ -120,6 +127,7 @@ def main() -> None:
     print(f"'Mean@{TIGHT:g}' = mean P&L at half-spread {TIGHT:g}.\n")
 
     best: dict[tuple[int, int, int], tuple[float, float]] = {}
+    results: dict[tuple[int, int, int], dict] = {}
     for mode in MODES:
         desc = ("4 noise traders, reference = your fair value" if mode == 3
                 else "4 noise traders (reference dice x 3.5) + 3 informed bots")
@@ -133,6 +141,9 @@ def main() -> None:
         for dice, hiddens in SETUPS:
             for hidden in hiddens:
                 r = simulate(rng, mode, dice, hidden, ROUNDS)
+                if (mode, dice, hidden) not in CURVE_CONFIGS:
+                    r = {k: v for k, v in r.items() if k != "pnl"}
+                results[(mode, dice, hidden)] = r
                 s = analyse(r)
                 a, b = s["a"], s["b"]
                 best[(mode, dice, hidden)] = (float(HALF_SPREADS[a]), float(HALF_SPREADS[b]))
@@ -151,6 +162,42 @@ def main() -> None:
                 vals = [best[(mode, dice, h)][idx] for h in hiddens]
                 parts.append(f"{dice} dice {[f'{v:g}' for v in vals]} -> {trend(vals)}")
             print(f"Level {mode}, {name}: " + "; ".join(parts))
+
+    print_curves(results)
+    print_scores(results)
+
+
+def print_curves(results: dict) -> None:
+    print("\n=== Part 1: full curves ===")
+    print("SE(diff) = SE of the mean of per-round (P&L at h minus P&L at best h), paired.")
+    print("'in2SE' marks h whose mean is within 2 SE of the best.")
+    for key in CURVE_CONFIGS:
+        mode, dice, hidden = key
+        r = results[key]
+        a = int(np.argmax(r["mean"]))
+        diff = r["pnl"] - r["pnl"][:, [a]]
+        se = diff.std(axis=0, ddof=1) / math.sqrt(diff.shape[0])
+        gap = r["mean"] - r["mean"][a]
+        within = [i for i in range(len(HALF_SPREADS)) if i == a or -gap[i] <= 2 * se[i]]
+        print(f"\nLevel {mode}, {dice} dice, {hidden} hidden (best h = {HALF_SPREADS[a]:g})")
+        print(f"{'h':>5} {'mean':>8} {'SD':>7} {'fills':>6} {'SE(diff)':>9} {'in2SE':>6}")
+        for i, h in enumerate(HALF_SPREADS):
+            flag = "yes" if i in within else ""
+            print(f"{h:>5.2f} {r['mean'][i]:>+8.3f} {r['sd'][i]:>7.3f} {r['fills'][i]:>6.2f} {se[i]:>9.4f} {flag:>6}")
+        print("Within 2 SE of best: " + ", ".join(f"{HALF_SPREADS[i]:g}" for i in within))
+
+
+def print_scores(results: dict) -> None:
+    print("\n=== Part 2: score = max(0, mean at h / mean at best h) ===")
+    idx = [int(np.argmin(np.abs(HALF_SPREADS - h))) for h in SCORE_HS]
+    print(f"{'Lvl':>3} {'Dice':>4} {'Hid':>3} {'best h':>6} {'best mean':>9} | "
+          + " ".join(f"{'h=' + format(h, 'g'):>7}" for h in SCORE_HS))
+    for (mode, dice, hidden), r in results.items():
+        a = int(np.argmax(r["mean"]))
+        bm = float(r["mean"][a])
+        scores = [max(0.0, float(r["mean"][i]) / bm) for i in idx]
+        print(f"{mode:>3} {dice:>4} {hidden:>3} {HALF_SPREADS[a]:>6.2f} {bm:>+9.3f} | "
+              + " ".join(f"{sc:>7.3f}" for sc in scores))
 
 
 if __name__ == "__main__":

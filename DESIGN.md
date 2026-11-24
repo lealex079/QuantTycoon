@@ -93,6 +93,16 @@ Findings:
 - The edge strategy's mean P&L depends on dice seen, not total dice or hidden count: about +0.87 at 1 seen, +1.34 at 2, +1.68 at 3, whatever the tier.
 - Single-round P&L is dominated by luck. Edge SD (2.0 to 3.0) is larger than its mean (0.9 to 1.7), and the edge strategy has positive P&L in only 43% to 61% of rounds. The game should show a decision-quality score alongside P&L.
 
+### Maker findings
+
+Source: `sim/level34_maker.py`, 100,000 rounds per setup, seed 12345, half-spread h from 0.25 to 6. Level 3 has 4 noise traders around your fair value. Level 4 has 4 noise traders anchored to dice x 3.5 plus 3 informed bots.
+
+- **Level 3 best half-spread is 1.75 for every hidden count.** Analytic: mean = 4h(1 - h/3.5), peak at h = 1.75 (mean 3.5). Hidden count only adds noise, not a different optimum, so Level 3 teaches spread vs fill rate only.
+- **Level 4 best half-spread is about 2.25-3.25 (measured), and tight quotes lose money in 6 of 8 configs** (at h = 0.5 the mean P&L is negative in 3/2, 4/2, 4/3, 5/2, 5/3, 5/4). Within each dice count, best achievable mean P&L and mean/SD fall monotonically as hidden count rises, and the cost of a tight quote grows with it. The best h does not move monotonically with hidden count.
+- **Level 4 optimum is sharp.** In the curves for 3/1, 4/1, 4/3, 5/4 (and Level 3 4/2), no other h is within 2 SE of the best (paired SE on per-round differences, common random numbers). Expect the optimum to be a point, not a plateau, on the 0.25 grid.
+- **Scoring: percent of best expected P&L**, `score = max(0, mean P&L at h / mean P&L at best h)`, shown alongside raw P&L. Risk-adjusted P&L (mean/SD) is rejected: it moves the Level 3 optimum from 1.75 to 2.0 and costs about 2% of mean P&L.
+- **Raw P&L is not comparable across levels.** Level 4 pays more at easy setups (e.g. 5.9 at 4/1 vs 3.5 at Level 3). Hypothesis, untested: noise traders anchored to the dice average produce one-sided flow when your fair value differs from it.
+
 ## Candidate later concepts (not decided)
 
 - Calibration
@@ -124,7 +134,7 @@ Findings:
 
 - Taker tiers overlap by error SD (Tier 1 up to 2.41, Tier 2 up to 2.96, Tier 3 from 2.41 to 3.42). Narrow Tier 3 to 3-4 hidden for cleaner difficulty steps? Keeping the current ranges for now.
 - Define taker tiers by dice seen as well as hidden count? Edge depends on seen, so tiers with the same hidden count can differ in how much the player can win.
-- Score Maker by risk-adjusted P&L, or add an informed bot to the fair-value-given level?
+- Add an informed bot to the fair-value-given level? (Maker scoring is decided: percent of best expected P&L.)
 - Which themes and formats to try first?
 - 16+ or all-ages release?
 
