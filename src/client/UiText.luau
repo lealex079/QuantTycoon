@@ -58,9 +58,12 @@ function UiText.fairEdge(fair: number, edge: number): string
 end
 
 -- One line tying the decision to the outcome.
-function UiText.verdict(goodCall: boolean, pnl: number, bestText: string): string
+-- tiedWithBest: a good call that is not the displayed best move (same edge, e.g. zero edge versus skipping).
+function UiText.verdict(goodCall: boolean, tiedWithBest: boolean, pnl: number, bestText: string): string
 	if not goodCall then
 		return "A better move was " .. bestText .. "."
+	elseif tiedWithBest then
+		return "Equal to skipping: no edge either way."
 	elseif pnl < 0 then
 		return "Right call, unlucky dice."
 	elseif pnl > 0 then

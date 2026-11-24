@@ -87,8 +87,12 @@ do
 	local best = bestFor(v)
 	TakerService.submitAction(key, v.roundId, best)
 	local v2 = TakerService.startRound(key)
-	local best2 = bestFor(v2)
-	local bad: TakerMath.Action = if best2 == "skip" then "buy" else "skip"
+	local fair2 = TakerMath.fairValue(sumOf(v2.seen), v2.hiddenCount)
+	-- a truly worse move: strictly lower edge than the best action (a zero-edge buy would tie with skip)
+	local bestEdge2 = TakerMath.edge(bestFor(v2), fair2, v2.bid, v2.ask)
+	local buyIsWorse = TakerMath.edge("buy", fair2, v2.bid, v2.ask) < bestEdge2 - 1e-9
+	local sellIsWorse = TakerMath.edge("sell", fair2, v2.bid, v2.ask) < bestEdge2 - 1e-9
+	local bad: TakerMath.Action = if buyIsWorse then "buy" elseif sellIsWorse then "sell" else "skip"
 	local s = TakerService.submitAction(key, v2.roundId, bad)
 	local r = s.result
 	report("bad call resets streak", r ~= nil and not r.goodCall and r.streak == 0 and r.newTier == nil)
@@ -140,6 +144,33 @@ do
 	report("sessionPnl accumulates", math.abs(last - expected) < 1e-9)
 end
 
+-- 9. zero-edge buy keeps the streak; a negative-edge buy resets it
+-- Plays one best-action round (streak 1), then looks for a second round whose buy edge matches `wantZero`.
+local function tryBuyAfterStreak(key: number, wantZero: boolean): (TakerService.Settlement?, TakerMath.Action?)
+	for _ = 1, 5000 do
+		TakerService.removePlayer(key)
+		local first = TakerService.startRound(key)
+		TakerService.submitAction(key, first.roundId, bestFor(first))
+		local v = TakerService.startRound(key)
+		local buyEdge = TakerMath.edge("buy", TakerMath.fairValue(sumOf(v.seen), v.hiddenCount), v.bid, v.ask)
+		local matches = if wantZero then math.abs(buyEdge) < 1e-9 else buyEdge < -1e-9
+		if matches then
+			local s = TakerService.submitAction(key, v.roundId, "buy")
+			return s.result, bestFor(v)
+		end
+	end
+	return nil, nil
+end
+
+do
+	local r, best = tryBuyAfterStreak(9009, true)
+	report("zero-edge buy keeps streak", r ~= nil and best == "skip" and r.goodCall and r.edge == 0 and r.streak == 2)
+	local w = tryBuyAfterStreak(9010, false)
+	report("negative-edge buy resets streak", w ~= nil and not w.goodCall and w.edge < 0 and w.streak == 0)
+end
+
+TakerService.removePlayer(9009)
+TakerService.removePlayer(9010)
 TakerService.removePlayer(9007)
 TakerService.removePlayer(9008)
 TakerService.removePlayer(9001)

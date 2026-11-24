@@ -55,6 +55,15 @@ function TakerMath.bestAction(fair: number, bid: number, ask: number): Action
 	return "skip"
 end
 
+local EDGE_EPSILON = 1e-9
+
+-- A good call is any action whose expected edge equals the best edge (within a tiny epsilon).
+-- Buying or selling at a zero-edge quote ties with skipping, so it counts.
+function TakerMath.isGoodCall(action: Action, fair: number, bid: number, ask: number): boolean
+	local best: Action = TakerMath.bestAction(fair, bid, ask)
+	return TakerMath.edge(action, fair, bid, ask) >= TakerMath.edge(best, fair, bid, ask) - EDGE_EPSILON
+end
+
 -- Realized P&L against the true total. buy: true - ask, sell: bid - true, skip: 0
 function TakerMath.settle(action: Action, bid: number, ask: number, trueTotal: number): number
 	if action == "buy" then

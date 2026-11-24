@@ -360,7 +360,7 @@ local function showResult(round: Visible, result: Settlement)
 
 	fairLine.Text = UiText.fairEdge(result.fairValue, result.edge)
 
-	verdictLine.Text = UiText.verdict(result.goodCall, result.pnl, actionText(result.bestAction, round))
+	verdictLine.Text = UiText.verdict(result.goodCall, result.goodCall and result.action ~= result.bestAction, result.pnl, actionText(result.bestAction, round))
 	verdictLine.TextColor3 = if result.goodCall then COLORS.good else COLORS.bad
 
 	-- After a promotion the banner is the news; streak progress for the new tier waits for the next round.

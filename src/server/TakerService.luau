@@ -7,7 +7,7 @@ local RunService = game:GetService("RunService")
 
 -- Studio-only debug: real players start with this streak so one good call promotes them.
 -- Ignored outside Studio. Set to 0 to turn it off.
-local STUDIO_DEBUG_START_STREAK = 4
+local STUDIO_DEBUG_START_STREAK = 0
 
 local Shared = ReplicatedStorage:WaitForChild("Shared")
 local LevelConfig = require(Shared:WaitForChild("LevelConfig"))
@@ -169,7 +169,7 @@ function TakerService.submitAction(key: number, roundId: any, action: any): Subm
 	local fair = TakerMath.fairValue(sum(round.seen), hiddenCount)
 	local trueTotal = sum(round.seen) + sum(round.hidden)
 	local best: TakerMath.Action = TakerMath.bestAction(fair, round.bid, round.ask)
-	local goodCall = taken == best
+	local goodCall = TakerMath.isGoodCall(taken, fair, round.bid, round.ask)
 
 	local newTier: number? = nil
 	if goodCall then
