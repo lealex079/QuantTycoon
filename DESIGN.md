@@ -34,6 +34,44 @@ The hidden count re-rolls each round. Tier 2 and 3 ranges are a first guess to t
 
 `fair value = seen total + hidden dice x 3.5`
 
+### Hidden Value scoring
+
+Decision: score each guess continuously, scaled by the uncertainty of the hidden dice, instead of fixed +/-1 and +/-2 bands.
+
+- `error SD = 1.708 x sqrt(hidden dice)`
+- `score = max(0, 1 - |true - guess| / (2 x error SD))`
+- Full score at zero error, zero score at 2 SD or more. The formula is a starting point to tune.
+
+Why: with an odd number of hidden dice the best guess is a half-number (e.g. 10.5), so fixed bands give inconsistent hit rates (25% within +/-1 at 3 hidden versus 32.9% at 4 hidden). Scaling by SD makes difficulty read the same at every hidden count.
+
+### Level 1 sim results
+
+Source: `sim/level1_hidden_value.py`, 100,000 rounds per setup, seed 12345.
+
+Error SD by hidden count (matches `1.708 x sqrt(hidden)`):
+
+| Hidden | Error SD |
+|--------|----------|
+| 1 | 1.71 |
+| 2 | 2.41-2.42 |
+| 3 | 2.96 |
+| 4 | 3.42 |
+
+Share of rounds within +/-1 and +/-2 of the true total, using the best guess:
+
+| Tier | Dice | Hidden | Within +/-1 | Within +/-2 |
+|------|------|--------|-------------|-------------|
+| 1 | 3 | 1 | 33.4% | 66.6% |
+| 1 | 3 | 2 | 44.5% | 66.7% |
+| 2 | 4 | 1 | 33.3% | 66.5% |
+| 2 | 4 | 2 | 44.3% | 66.4% |
+| 2 | 4 | 3 | 25.0% | 48.3% |
+| 3 | 5 | 2 | 44.5% | 66.7% |
+| 3 | 5 | 3 | 25.0% | 48.1% |
+| 3 | 5 | 4 | 32.9% | 52.0% |
+
+These confirm the fair value formula (seen total + hidden x 3.5) as the best guess. Error depends only on the hidden count, not the number of dice.
+
 ## Candidate later concepts (not decided)
 
 - Calibration
@@ -63,6 +101,7 @@ The hidden count re-rolls each round. Tier 2 and 3 ranges are a first guess to t
 
 ## Open questions
 
+- Taker tiers overlap by error SD (Tier 1 up to 2.41, Tier 2 up to 2.96, Tier 3 from 2.41 to 3.42). Narrow Tier 3 to 3-4 hidden for cleaner difficulty steps? Keeping the current ranges for now.
 - Score Maker by risk-adjusted P&L, or add an informed bot to the fair-value-given level?
 - Which themes and formats to try first?
 - 16+ or all-ages release?
