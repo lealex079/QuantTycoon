@@ -66,8 +66,15 @@ function UiText.topStreak(streak: number): string
 	return string.format("%s. Streak: %d", UiText.topTierStreak, streak)
 end
 
-function UiText.promoted(tier: number): string
-	return string.format("Promoted to %s!", UiText.tier(tier))
+function UiText.promotionTitle(tier: number): string
+	return string.format("%s reached", UiText.tier(tier))
+end
+
+function UiText.promotionDetail(dice: number, hiddenMin: number, hiddenMax: number): string
+	local hidden = if hiddenMin == hiddenMax
+		then string.format("%d hidden", hiddenMin)
+		else string.format("%d-%d hidden", hiddenMin, hiddenMax)
+	return string.format("%d dice, %s", dice, hidden)
 end
 
 function UiText.session(pnl: number): string

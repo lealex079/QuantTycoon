@@ -5,6 +5,7 @@ local Players = game:GetService("Players")
 local ReplicatedStorage = game:GetService("ReplicatedStorage")
 
 local UiText = require(script.Parent:WaitForChild("UiText"))
+local LevelConfig = require(ReplicatedStorage:WaitForChild("Shared"):WaitForChild("LevelConfig"))
 
 type Action = "buy" | "sell" | "skip"
 
@@ -59,6 +60,7 @@ local COLORS = {
 local MAX_TILES = 5
 local TILE_WIDTH = 0.18 -- of the dice row; five tiles plus gaps fit exactly
 local TILE_GAP = 0.02
+local PROMO_DELAY = 1.2 -- seconds the player sees their own result before the promotion banner
 
 -- UI building helpers ---------------------------------------------------------
 
@@ -150,6 +152,7 @@ local playerGui = player:WaitForChild("PlayerGui")
 local gui = Instance.new("ScreenGui")
 gui.Name = "TakerUI"
 gui.ResetOnSpawn = false
+gui.ZIndexBehavior = Enum.ZIndexBehavior.Sibling -- children draw above their parent, so the promotion banner sits over its dim layer
 gui.ScreenInsets = Enum.ScreenInsets.CoreUISafeInsets -- clear of the top bar, Roblox menus and device cutouts
 
 local backdrop = newFrame(gui, "Backdrop", UDim2.fromScale(0, 0), UDim2.fromScale(1, 1))
@@ -196,21 +199,33 @@ skipButton.Text = UiText.skip
 local resultFrame = newFrame(rightCol, "Result", UDim2.fromScale(0, 0), UDim2.fromScale(1, 1))
 local resultList = newFrame(resultFrame, "Lines", UDim2.fromScale(0, 0), UDim2.fromScale(1, 0.78))
 newList(resultList, Enum.FillDirection.Vertical, 0)
-local actionLine = newLabel(resultList, "Action", UDim2.new(), UDim2.fromScale(1, 0.15), COLORS.muted)
-local pnlLine = newLabel(resultList, "Pnl", UDim2.new(), UDim2.fromScale(1, 0.2), COLORS.text)
-local verdictLine = newLabel(resultList, "Verdict", UDim2.new(), UDim2.fromScale(1, 0.2), COLORS.text)
-local streakLine = newLabel(resultList, "Streak", UDim2.new(), UDim2.fromScale(1, 0.14), COLORS.text)
-local promoLine = newLabel(resultList, "Promotion", UDim2.new(), UDim2.fromScale(1, 0.16), COLORS.promo)
-local sessionLine = newLabel(resultList, "Session", UDim2.new(), UDim2.fromScale(1, 0.15), COLORS.muted)
+local actionLine = newLabel(resultList, "Action", UDim2.new(), UDim2.fromScale(1, 0.18), COLORS.muted)
+local pnlLine = newLabel(resultList, "Pnl", UDim2.new(), UDim2.fromScale(1, 0.24), COLORS.text)
+local verdictLine = newLabel(resultList, "Verdict", UDim2.new(), UDim2.fromScale(1, 0.24), COLORS.text)
+local streakLine = newLabel(resultList, "Streak", UDim2.new(), UDim2.fromScale(1, 0.16), COLORS.text)
+local sessionLine = newLabel(resultList, "Session", UDim2.new(), UDim2.fromScale(1, 0.18), COLORS.muted)
 actionLine.LayoutOrder = 1
 pnlLine.LayoutOrder = 2
 verdictLine.LayoutOrder = 3
 streakLine.LayoutOrder = 4
-promoLine.LayoutOrder = 5
-sessionLine.LayoutOrder = 6
+sessionLine.LayoutOrder = 5
 local continueButton = newButton(resultFrame, "Continue", UDim2.fromScale(1, 0.18), COLORS.cont)
 continueButton.Position = UDim2.fromScale(0, 0.82)
 continueButton.Text = UiText.continue
+
+-- Promotion overlay: a full-width banner over a dimmed screen, above everything else.
+local promoOverlay = newFrame(gui, "PromotionOverlay", UDim2.fromScale(0, 0), UDim2.fromScale(1, 1))
+promoOverlay.BackgroundColor3 = Color3.new(0, 0, 0)
+promoOverlay.BackgroundTransparency = 0.4
+promoOverlay.Active = true -- swallow clicks so nothing underneath can be pressed
+promoOverlay.ZIndex = 10
+promoOverlay.Visible = false
+local promoBanner = newCard(promoOverlay, "Banner", UDim2.fromScale(0, 0.28), UDim2.fromScale(1, 0.44))
+local promoTitle = newLabel(promoBanner, "Title", UDim2.fromScale(0.05, 0.08), UDim2.fromScale(0.9, 0.34), COLORS.promo)
+local promoDetail = newLabel(promoBanner, "Detail", UDim2.fromScale(0.05, 0.44), UDim2.fromScale(0.9, 0.2), COLORS.text)
+local promoContinue = newButton(promoBanner, "Continue", UDim2.fromScale(0.5, 0.22), COLORS.cont)
+promoContinue.Position = UDim2.fromScale(0.25, 0.7)
+promoContinue.Text = UiText.continue
 
 decisionFrame.Visible = false
 resultFrame.Visible = false
@@ -239,6 +254,19 @@ applyLayout()
 local currentRound: Visible? = nil
 local hiddenTiles: { { tile: Frame, label: TextLabel } } = {}
 local busy = false -- true from a click until the server answers
+local promoToken = 0 -- bumped whenever the screen changes, so a late banner never shows over the wrong round
+local promoPending = false -- a promotion banner is waiting or showing; Continue stays locked until it is dismissed
+local knownTier: number? = nil -- the tier the client has been told about, for the promotion check
+
+local function showPromotion(tier: number)
+	local config = LevelConfig.tiers[tier]
+	if not config then
+		return
+	end
+	promoTitle.Text = UiText.promotionTitle(tier)
+	promoDetail.Text = UiText.promotionDetail(config.dice, config.hiddenMin, config.hiddenMax)
+	promoOverlay.Visible = true
+end
 
 local function actionText(action: Action, round: Visible): string
 	if action == "buy" then
@@ -271,6 +299,16 @@ local function addTile(label: string, tileColor: Color3, textColor: Color3, orde
 end
 
 local function showRound(round: Visible)
+	-- Check: the tier may only rise through a result that carried newTier. If it rose without one,
+	-- the promotion data never reached us, so fail loudly instead of silently skipping the banner.
+	if knownTier and round.tier > knownTier then
+		task.spawn(error, string.format("Tier rose %d -> %d without a RoundResult newTier", knownTier, round.tier))
+	end
+	knownTier = round.tier
+
+	promoToken += 1
+	promoPending = false
+	promoOverlay.Visible = false
 	currentRound = round
 	busy = false
 
@@ -332,18 +370,26 @@ local function showResult(round: Visible, result: Settlement)
 		streakLine.Text = UiText.topStreak(result.streak)
 	end
 
-	local promoted = result.newTier
-	promoLine.Visible = promoted ~= nil
-	if promoted then
-		promoLine.Text = UiText.promoted(promoted)
-	end
-
 	sessionLine.Text = UiText.session(result.sessionPnl)
 	sessionLine.TextColor3 = COLORS.muted
 
-	setButtonEnabled(continueButton, true)
 	decisionFrame.Visible = false
 	resultFrame.Visible = true
+
+	-- The result is on screen first; the promotion banner follows after a short beat.
+	promoToken += 1
+	local token = promoToken
+	local promoted = result.newTier
+	promoPending = promoted ~= nil
+	setButtonEnabled(continueButton, promoted == nil)
+	if promoted then
+		knownTier = promoted
+		task.delay(PROMO_DELAY, function()
+			if promoToken == token then
+				showPromotion(promoted)
+			end
+		end)
+	end
 end
 
 -- Input and network -------------------------------------------------------------
@@ -370,8 +416,14 @@ skipButton.Activated:Connect(function()
 	submit("skip")
 end)
 
+promoContinue.Activated:Connect(function()
+	promoPending = false
+	promoOverlay.Visible = false
+	setButtonEnabled(continueButton, true)
+end)
+
 continueButton.Activated:Connect(function()
-	if busy then
+	if busy or promoPending then
 		return
 	end
 	busy = true

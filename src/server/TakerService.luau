@@ -1,7 +1,13 @@
 --!strict
 -- Server-side Taker level. The core takes a numeric key (UserId), not a Player.
 -- Hidden dice and the true total stay in server memory until settlement.
+local Players = game:GetService("Players")
 local ReplicatedStorage = game:GetService("ReplicatedStorage")
+local RunService = game:GetService("RunService")
+
+-- Studio-only debug: real players start with this streak so one good call promotes them.
+-- Ignored outside Studio. Set to 0 to turn it off.
+local STUDIO_DEBUG_START_STREAK = 4
 
 local Shared = ReplicatedStorage:WaitForChild("Shared")
 local LevelConfig = require(Shared:WaitForChild("LevelConfig"))
@@ -65,7 +71,11 @@ local TakerService = {}
 local function getState(key: number): PlayerState
 	local state = players[key]
 	if not state then
-		state = { tier = 1, streak = 0, sessionPnl = 0, nextRoundId = 1, round = nil }
+		local startStreak = 0
+		if RunService:IsStudio() and Players:GetPlayerByUserId(key) then -- fake keys in checks are not players
+			startStreak = STUDIO_DEBUG_START_STREAK
+		end
+		state = { tier = 1, streak = startStreak, sessionPnl = 0, nextRoundId = 1, round = nil }
 		players[key] = state
 	end
 	return state
