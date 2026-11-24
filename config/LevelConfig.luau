@@ -11,7 +11,7 @@ export type Curve = {
 export type LevelConfig = {
 	sides: number,
 	tiers: { Tier },
-	promotion: { rule: string },
+	promotion: { rule: string, goodCalls: number, consecutive: boolean, demote: boolean },
 	level1: { errorSdPerSqrtHidden: number, scoreSdMultiple: number },
 	level2: { midNoiseMax: number, spread: number },
 	maker: {
@@ -29,7 +29,7 @@ local config: LevelConfig = {
 		{ tier = 2, dice = 4, hiddenMin = 1, hiddenMax = 3 },
 		{ tier = 3, dice = 5, hiddenMin = 2, hiddenMax = 4 },
 	},
-	promotion = { rule = "unspecified" }, -- no promotion rule is defined in DESIGN.md or the sims
+	promotion = { rule = "streak", goodCalls = 5, consecutive = true, demote = false },
 	level1 = { errorSdPerSqrtHidden = 1.708, scoreSdMultiple = 2.0 },
 	level2 = { midNoiseMax = 2, spread = 2.0 }, -- mid = dice * 3.5 + U(-midNoiseMax, +midNoiseMax)
 	maker = {

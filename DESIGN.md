@@ -30,6 +30,15 @@ Learn and show a shipped project first, fun second, revenue only as upside.
 
 The hidden count re-rolls each round. Tier 2 and 3 ranges are a first guess to tune in the Python sim.
 
+### Taker promotion
+
+Decided:
+
+- A **good call** is choosing the action with the highest expected value (buy, sell or skip) given the bot's quote and the player's fair value.
+- Promote to the next tier after **5 consecutive good calls**.
+- A bad call resets the streak to 0.
+- No demotion.
+
 ### Fair value
 
 `fair value = seen total + hidden dice x 3.5`
