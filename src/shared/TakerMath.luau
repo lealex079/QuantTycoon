@@ -18,11 +18,19 @@ function TakerMath.fairValue(seenSum: number, hiddenCount: number): number
 	return seenSum + hiddenCount * meanSide()
 end
 
--- mid = dice x mean side + U(-midNoiseMax, +midNoiseMax); bid/ask = mid -/+ spread / 2
+-- Round to the nearest step, ties half up (same rule as sim/level2_taker.py). step <= 0 means no rounding.
+local function roundToStep(x: number, step: number): number
+	if step <= 0 then
+		return x
+	end
+	return math.floor(x / step + 0.5) * step
+end
+
+-- mid = round(dice x mean side + U(-midNoiseMax, +midNoiseMax), midRounding); bid/ask = mid -/+ spread / 2
 function TakerMath.makeQuote(diceCount: number, rng: Rng): Quote
 	local level2 = LevelConfig.level2
 	local shift = rng:NextNumber(-level2.midNoiseMax, level2.midNoiseMax)
-	local mid = diceCount * meanSide() + shift
+	local mid = roundToStep(diceCount * meanSide() + shift, level2.midRounding)
 	return { bid = mid - level2.spread / 2, ask = mid + level2.spread / 2 }
 end
 

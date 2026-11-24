@@ -13,7 +13,7 @@ export type LevelConfig = {
 	tiers: { Tier },
 	promotion: { rule: string, goodCalls: number, consecutive: boolean, demote: boolean },
 	level1: { errorSdPerSqrtHidden: number, scoreSdMultiple: number },
-	level2: { midNoiseMax: number, spread: number },
+	level2: { midNoiseMax: number, spread: number, midRounding: number },
 	maker: {
 		noiseTraders: number, toleranceMax: number, informedBots: number,
 		informedSeenDiceRule: string, edgeThresholdMin: number, edgeThresholdMax: number,
@@ -31,7 +31,8 @@ local config: LevelConfig = {
 	},
 	promotion = { rule = "streak", goodCalls = 5, consecutive = true, demote = false },
 	level1 = { errorSdPerSqrtHidden = 1.708, scoreSdMultiple = 2.0 },
-	level2 = { midNoiseMax = 2, spread = 2.0 }, -- mid = dice * 3.5 + U(-midNoiseMax, +midNoiseMax)
+	level2 = { midNoiseMax = 2, spread = 2.0, midRounding = 0.5 },
+	-- mid = round(dice * 3.5 + U(-midNoiseMax, +midNoiseMax), to nearest midRounding, half up; 0 = no rounding
 	maker = {
 		noiseTraders = 4, toleranceMax = 3.5, informedBots = 3,
 		informedSeenDiceRule = "ceil(dice / 2)",
