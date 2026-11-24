@@ -26,12 +26,14 @@ local function roundToStep(x: number, step: number): number
 	return math.floor(x / step + 0.5) * step
 end
 
--- mid = round(dice x mean side + U(-midNoiseMax, +midNoiseMax), midRounding); bid/ask = mid -/+ spread / 2
-function TakerMath.makeQuote(diceCount: number, rng: Rng): Quote
+-- mid = round(dice x mean side + U(-midNoiseMax, +midNoiseMax), midRounding); bid/ask = mid -/+ spread / 2.
+-- Dice count and full spread both come from the player's tier in LevelConfig.
+function TakerMath.makeQuote(tier: number, rng: Rng): Quote
+	local tierConfig = LevelConfig.tiers[tier]
 	local level2 = LevelConfig.level2
 	local shift = rng:NextNumber(-level2.midNoiseMax, level2.midNoiseMax)
-	local mid = roundToStep(diceCount * meanSide() + shift, level2.midRounding)
-	return { bid = mid - level2.spread / 2, ask = mid + level2.spread / 2 }
+	local mid = roundToStep(tierConfig.dice * meanSide() + shift, level2.midRounding)
+	return { bid = mid - tierConfig.spread / 2, ask = mid + tierConfig.spread / 2 }
 end
 
 -- Expected edge of an action versus the quote, given fair value.
