@@ -46,8 +46,15 @@ SETUPS = [
 MODES = [3, 4]
 
 
-def simulate(rng: np.random.Generator, mode: int, dice: int, hidden: int, rounds: int) -> dict:
-    """Return per-half-spread arrays of mean P&L, SD P&L and mean fills."""
+def simulate(rng: np.random.Generator, mode: int, dice: int, hidden: int, rounds: int,
+             hs: np.ndarray = HALF_SPREADS, thr_max: float = 0.0) -> dict:
+    """Return per-half-spread arrays of mean P&L, SD P&L and mean fills.
+
+    thr_max > 0 switches informed bots to the edge-threshold variant: each bot trades only if
+    its edge (estimate minus ask, or bid minus estimate) exceeds a per-bot, per-round threshold
+    drawn from U(0, thr_max). Thresholds are drawn after everything else, so the same seed gives
+    the same dice, noise traders and estimates in both variants.
+    """
     rolls = rng.integers(1, SIDES + 1, size=(rounds, dice))
     true_total = rolls.sum(axis=1).astype(float)
     fair = rolls[:, hidden:].sum(axis=1) + hidden * MEAN_DIE
@@ -67,11 +74,13 @@ def simulate(rng: np.random.Generator, mode: int, dice: int, hidden: int, rounds
             seen_sum = np.take_along_axis(rolls, order, axis=1).sum(axis=1)
             estimates[:, b] = seen_sum + (dice - k) * MEAN_DIE
 
-    means = np.empty(len(HALF_SPREADS))
-    sds = np.empty(len(HALF_SPREADS))
-    fills = np.empty(len(HALF_SPREADS))
-    pnl_all = np.empty((rounds, len(HALF_SPREADS)))  # per-round P&L, common random numbers across h
-    for i, h in enumerate(HALF_SPREADS):
+    thr = rng.uniform(0.0, thr_max, size=(rounds, N_INFORMED)) if thr_max > 0 else None
+
+    means = np.empty(len(hs))
+    sds = np.empty(len(hs))
+    fills = np.empty(len(hs))
+    pnl_all = np.empty((rounds, len(hs)))  # per-round P&L, common random numbers across h
+    for i, h in enumerate(hs):
         bid = fair - h
         ask = fair + h
         t = true_total[:, None]
@@ -82,8 +91,12 @@ def simulate(rng: np.random.Generator, mode: int, dice: int, hidden: int, rounds
         n_fills = buy_fill.sum(axis=1) + sell_fill.sum(axis=1)
 
         if estimates is not None:
-            inf_buy = estimates > ask[:, None]    # player sells at ask
-            inf_sell = estimates < bid[:, None]   # player buys at bid
+            if thr is None:
+                inf_buy = estimates > ask[:, None]    # player sells at ask
+                inf_sell = estimates < bid[:, None]   # player buys at bid
+            else:
+                inf_buy = (estimates - ask[:, None]) > thr
+                inf_sell = (bid[:, None] - estimates) > thr
             pnl = pnl + (inf_buy * (ask[:, None] - t)).sum(axis=1) + (inf_sell * (t - bid[:, None])).sum(axis=1)
             n_fills = n_fills + inf_buy.sum(axis=1) + inf_sell.sum(axis=1)
 
@@ -165,6 +178,7 @@ def main() -> None:
 
     print_curves(results)
     print_scores(results)
+    print_lattice_test()
 
 
 def print_curves(results: dict) -> None:
@@ -198,6 +212,72 @@ def print_scores(results: dict) -> None:
         scores = [max(0.0, float(r["mean"][i]) / bm) for i in idx]
         print(f"{mode:>3} {dice:>4} {hidden:>3} {HALF_SPREADS[a]:>6.2f} {bm:>+9.3f} | "
               + " ".join(f"{sc:>7.3f}" for sc in scores))
+
+
+# Lattice test: fine h grid and the informed-bot edge-threshold variant (Level 4 only)
+FINE_HS = np.round(np.arange(1.0, 4.0 + 1e-9, 0.05), 2)
+FINE_CONFIGS = [(4, 1), (4, 3), (5, 4)]  # (dice, hidden), Level 4
+THR_MAX = 0.75
+
+
+def _run(dice: int, hidden: int, hs: np.ndarray, thr_max: float) -> dict:
+    """Same seed per (dice, hidden) so strict and threshold runs share dice and estimates."""
+    rng = np.random.default_rng(SEED + 100 * dice + hidden)
+    return simulate(rng, 4, dice, hidden, ROUNDS, hs, thr_max)
+
+
+def roughness(mean: np.ndarray) -> float:
+    """RMS second difference of the mean curve (0 = straight line)."""
+    return float(np.sqrt(np.mean(np.diff(mean, 2) ** 2)))
+
+
+def print_lattice_test() -> None:
+    print("\n=== Lattice test: Level 4, h = 1.0 to 4.0 step 0.05 ===")
+    print(f"strict = informed bots trade if estimate beats the quote (old). "
+          f"thr = also need edge > U(0, {THR_MAX:g}) per bot per round. Same dice/estimates in both.")
+    for dice, hidden in FINE_CONFIGS:
+        s = _run(dice, hidden, FINE_HS, 0.0)
+        t = _run(dice, hidden, FINE_HS, THR_MAX)
+        print(f"\nLevel 4, {dice} dice, {hidden} hidden")
+        print(f"{'h':>5} {'s.mean':>8} {'s.fills':>8} {'s.dFill':>8} | {'t.mean':>8} {'t.fills':>8} {'t.dFill':>8}")
+        for i, h in enumerate(FINE_HS):
+            ds = "" if i == 0 else f"{s['fills'][i] - s['fills'][i - 1]:+.3f}"
+            dt = "" if i == 0 else f"{t['fills'][i] - t['fills'][i - 1]:+.3f}"
+            print(f"{h:>5.2f} {s['mean'][i]:>+8.3f} {s['fills'][i]:>8.3f} {ds:>8} | "
+                  f"{t['mean'][i]:>+8.3f} {t['fills'][i]:>8.3f} {dt:>8}")
+        for name, r in (("strict", s), ("thr", t)):
+            d = np.diff(r["fills"])
+            # a jump = a step whose fill change is more than 2x the median step magnitude (and > 0.02)
+            cut = max(0.02, 2 * float(np.median(np.abs(d))))
+            jumps = [f"{FINE_HS[i]:g}->{FINE_HS[i + 1]:g}({d[i]:+.3f})" for i in range(len(d)) if abs(d[i]) > cut]
+            a = int(np.argmax(r["mean"]))
+            print(f"{name}: best h {FINE_HS[a]:g}, roughness(mean) {roughness(r['mean']):.4f}, "
+                  f"median |dFill| {np.median(np.abs(d)):.3f}, jumps (> {cut:.3f}): {', '.join(jumps) or 'none'}")
+
+    print("\n=== Level 4 scores and findings, strict vs threshold (0.25 grid) ===")
+    print(f"{'var':>6} {'Dice':>4} {'Hid':>3} {'best h':>6} {'best mean':>9} {'Mean@0.5':>9} | "
+          + " ".join(f"{'h=' + format(h, 'g'):>7}" for h in SCORE_HS))
+    idx = [int(np.argmin(np.abs(HALF_SPREADS - h))) for h in SCORE_HS]
+    t5 = int(np.argmin(np.abs(HALF_SPREADS - TIGHT)))
+    out: dict[tuple[str, int, int], tuple[float, float, float]] = {}
+    for var, thr_max in (("strict", 0.0), ("thr", THR_MAX)):
+        for dice, hiddens in SETUPS:
+            for hidden in hiddens:
+                r = _run(dice, hidden, HALF_SPREADS, thr_max)
+                a = int(np.argmax(r["mean"]))
+                bm = float(r["mean"][a])
+                ratio = r["mean"] / r["sd"]
+                out[(var, dice, hidden)] = (float(HALF_SPREADS[a]), bm, float(ratio.max()))
+                print(f"{var:>6} {dice:>4} {hidden:>3} {HALF_SPREADS[a]:>6.2f} {bm:>+9.3f} {r['mean'][t5]:>+9.3f} | "
+                      + " ".join(f"{max(0.0, float(r['mean'][i]) / bm):>7.3f}" for i in idx))
+        print()
+    for var in ("strict", "thr"):
+        for dice, hiddens in SETUPS:
+            bms = [out[(var, dice, h)][1] for h in hiddens]
+            rs = [out[(var, dice, h)][2] for h in hiddens]
+            hs_ = [out[(var, dice, h)][0] for h in hiddens]
+            print(f"{var:>6} {dice} dice: best h {hs_} ({trend(hs_)}); best mean {[round(v, 3) for v in bms]} "
+                  f"({trend(bms)}); best mean/SD {[round(v, 4) for v in rs]} ({trend(rs)})")
 
 
 if __name__ == "__main__":
