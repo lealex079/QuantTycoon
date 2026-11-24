@@ -1,4 +1,4 @@
-"""Export game config to config/LevelConfig.luau.
+"""Export game config to src/shared/LevelConfig.luau.
 
 Reads parameters from the existing sims and writes a strict-typed Luau ModuleScript that
 returns one table with no logic. Maker curves are recomputed here with the Level 34 sim:
@@ -16,7 +16,7 @@ import level1_hidden_value as l1
 import level2_taker as l2
 import level34_maker as mk
 
-OUT = Path(__file__).resolve().parent.parent / "config" / "LevelConfig.luau"
+OUT = Path(__file__).resolve().parent.parent / "src" / "shared" / "LevelConfig.luau"
 
 ROUNDS = 100_000
 SEED = 12345
@@ -108,7 +108,7 @@ def build() -> str:
 
 
 def main() -> None:
-    OUT.parent.mkdir(exist_ok=True)
+    OUT.parent.mkdir(parents=True, exist_ok=True)
     OUT.write_text(build())
     print(f"Wrote {OUT} ({OUT.stat().st_size:,} bytes)")
 
