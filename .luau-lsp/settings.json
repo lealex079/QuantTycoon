@@ -1,0 +1,5 @@
+{
+  "luau-lsp.platform.type": "roblox",
+  "luau-lsp.types.definitionFiles": { "roblox": ".luau-lsp/globalTypes.d.luau" },
+  "luau-lsp.sourcemap.rojoProjectFile": "default.project.json"
+}
