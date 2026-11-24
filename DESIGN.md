@@ -72,6 +72,27 @@ Share of rounds within +/-1 and +/-2 of the true total, using the best guess:
 
 These confirm the fair value formula (seen total + hidden x 3.5) as the best guess. Error depends only on the hidden count, not the number of dice.
 
+### Level 2 sim results
+
+Source: `sim/level2_taker.py`, 100,000 rounds per setup, seed 12345. The bot quotes around dice x 3.5 plus a continuous shift uniform in [-2, +2], with a spread of 2. Seen = dice - hidden. Cells are mean P&L per round (SD in the sim output). Win% = share of all rounds where the edge strategy has positive P&L (skips count as not winning).
+
+| Tier | Dice | Hidden | Seen | Buy | Sell | Edge | Trade% | Win% |
+|------|------|--------|------|-----|------|------|--------|------|
+| 1 | 3 | 1 | 2 | -1.00 | -1.00 | +1.32 | 72.2% | 55.7% |
+| 1 | 3 | 2 | 1 | -1.01 | -1.00 | +0.88 | 66.6% | 46.3% |
+| 2 | 4 | 1 | 3 | -0.99 | -1.01 | +1.70 | 76.5% | 61.2% |
+| 2 | 4 | 2 | 2 | -1.03 | -0.97 | +1.34 | 72.5% | 53.6% |
+| 2 | 4 | 3 | 1 | -1.00 | -1.00 | +0.88 | 66.5% | 43.4% |
+| 3 | 5 | 2 | 3 | -1.00 | -1.00 | +1.68 | 76.2% | 58.8% |
+| 3 | 5 | 3 | 2 | -1.01 | -0.99 | +1.34 | 72.2% | 50.9% |
+| 3 | 5 | 4 | 1 | -0.99 | -1.01 | +0.87 | 66.7% | 43.0% |
+
+Findings:
+
+- Always buy or always sell loses about the half-spread (1.0 per round) in every setup. Without information, trading against the quote has no edge.
+- The edge strategy's mean P&L depends on dice seen, not total dice or hidden count: about +0.87 at 1 seen, +1.34 at 2, +1.68 at 3, whatever the tier.
+- Single-round P&L is dominated by luck. Edge SD (2.0 to 3.0) is larger than its mean (0.9 to 1.7), and the edge strategy has positive P&L in only 43% to 61% of rounds. The game should show a decision-quality score alongside P&L.
+
 ## Candidate later concepts (not decided)
 
 - Calibration
@@ -102,6 +123,7 @@ These confirm the fair value formula (seen total + hidden x 3.5) as the best gue
 ## Open questions
 
 - Taker tiers overlap by error SD (Tier 1 up to 2.41, Tier 2 up to 2.96, Tier 3 from 2.41 to 3.42). Narrow Tier 3 to 3-4 hidden for cleaner difficulty steps? Keeping the current ranges for now.
+- Define taker tiers by dice seen as well as hidden count? Edge depends on seen, so tiers with the same hidden count can differ in how much the player can win.
 - Score Maker by risk-adjusted P&L, or add an informed bot to the fair-value-given level?
 - Which themes and formats to try first?
 - 16+ or all-ages release?
