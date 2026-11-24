@@ -169,6 +169,20 @@ do
 	report("negative-edge buy resets streak", w ~= nil and not w.goodCall and w.edge < 0 and w.streak == 0)
 end
 
+-- 10. every quote is on the 0.5 grid and its gap equals the player's tier spread (per tier, from config)
+do
+	local LevelConfig = require(ReplicatedStorage:WaitForChild("Shared"):WaitForChild("LevelConfig"))
+	local ok = true
+	for tierIndex, tierConfig in LevelConfig.tiers do
+		for _ = 1, 500 do
+			local q = TakerMath.makeQuote(tierIndex, Random.new() :: any)
+			ok = ok and math.abs(q.ask - q.bid - tierConfig.spread) < 1e-9
+				and (q.bid * 2) % 1 == 0 and (q.ask * 2) % 1 == 0
+		end
+	end
+	report("quote gap equals tier spread, on 0.5 grid", ok)
+end
+
 TakerService.removePlayer(9009)
 TakerService.removePlayer(9010)
 TakerService.removePlayer(9007)

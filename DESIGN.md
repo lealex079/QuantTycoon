@@ -22,13 +22,13 @@ Learn and show a shipped project first, fun second, revenue only as upside.
 
 ### Taker tiers
 
-| Tier | Dice | Hidden |
-|------|------|--------|
-| 1 | 3 | 1 or 2 |
-| 2 | 4 | 1 to 3 |
-| 3 | 5 | 2 to 4 |
+| Tier | Dice | Hidden | Full spread |
+|------|------|--------|-------------|
+| 1 | 3 | 1 or 2 | 1.0 |
+| 2 | 4 | 1 to 3 | 1.0 |
+| 3 | 5 | 2 to 4 | 1.0 |
 
-The hidden count re-rolls each round. Tier 2 and 3 ranges are a first guess to tune in the Python sim.
+The hidden count re-rolls each round. Tier 2 and 3 ranges are a first guess to tune in the Python sim. The spread is a per-tier config value (`tiers[].spread` in `LevelConfig`, from `TIER_SPREAD` in `sim/level2_taker.py`), so it can be tuned per tier without code changes.
 
 ### Taker promotion
 
@@ -83,37 +83,61 @@ These confirm the fair value formula (seen total + hidden x 3.5) as the best gue
 
 ### Level 2 sim results
 
-Source: `sim/level2_taker.py`, 100,000 rounds per setup, seed 12345. The bot's mid is dice x 3.5 plus a continuous shift uniform in [-2, +2], **rounded to the nearest 0.5 (ties half up)**, then bid = mid - 1 and ask = mid + 1 (spread 2), so quotes end in .0 or .5. The table below is the rounded quote; the continuous results are kept in the sim for comparison. Seen = dice - hidden. Cells are mean P&L per round (SD in the sim output). Win% = share of all rounds where the edge strategy has positive P&L (skips count as not winning).
+Source: `sim/level2_taker.py`, 100,000 rounds per setup, seed 12345. The bot's mid is dice x 3.5 plus a continuous shift uniform in [-2, +2], **rounded to the nearest 0.5 (ties half up)**, then bid = mid - spread / 2 and ask = mid + spread / 2, with the full spread set per tier (**1.0 for every tier**, see the spread decision below), so quotes end in .0 or .5. The tables below are the rounded quote at spread 1.0 unless marked; the continuous results are kept in the sim for comparison. Seen = dice - hidden. Cells are mean P&L per round (SD in the sim output). Win% = share of all rounds where the edge strategy has positive P&L (skips count as not winning).
 
 | Tier | Dice | Hidden | Seen | Buy | Sell | Edge | Trade% | Win% |
 |------|------|--------|------|-----|------|------|--------|------|
-| 1 | 3 | 1 | 2 | -1.00 | -1.00 | +1.32 | 66.1% | 50.2% |
-| 1 | 3 | 2 | 1 | -1.00 | -1.00 | +0.88 | 58.3% | 40.1% |
-| 2 | 4 | 1 | 3 | -0.99 | -1.01 | +1.70 | 70.6% | 56.2% |
-| 2 | 4 | 2 | 2 | -1.03 | -0.97 | +1.34 | 66.3% | 48.7% |
-| 2 | 4 | 3 | 1 | -1.00 | -1.00 | +0.88 | 58.5% | 37.9% |
-| 3 | 5 | 2 | 3 | -1.00 | -1.00 | +1.68 | 70.4% | 53.8% |
-| 3 | 5 | 3 | 2 | -1.01 | -0.99 | +1.33 | 66.1% | 46.0% |
-| 3 | 5 | 4 | 1 | -0.99 | -1.01 | +0.87 | 58.3% | 37.0% |
+| 1 | 3 | 1 | 2 | -0.50 | -0.50 | +1.71 | 79.1% | 61.6% |
+| 1 | 3 | 2 | 1 | -0.50 | -0.50 | +1.26 | 74.9% | 52.7% |
+| 2 | 4 | 1 | 3 | -0.49 | -0.51 | +2.11 | 82.2% | 66.6% |
+| 2 | 4 | 2 | 2 | -0.53 | -0.47 | +1.74 | 79.3% | 59.4% |
+| 2 | 4 | 3 | 1 | -0.50 | -0.50 | +1.26 | 74.9% | 49.9% |
+| 3 | 5 | 2 | 3 | -0.50 | -0.50 | +2.09 | 82.1% | 63.8% |
+| 3 | 5 | 3 | 2 | -0.51 | -0.49 | +1.74 | 79.2% | 56.3% |
+| 3 | 5 | 4 | 1 | -0.49 | -0.51 | +1.24 | 75.0% | 48.8% |
 
 Findings:
 
-- Always buy or always sell loses about the half-spread (1.0 per round) in every setup. Without information, trading against the quote has no edge.
-- The edge strategy's mean P&L depends on dice seen, not total dice or hidden count: about +0.88 at 1 seen, +1.33 at 2, +1.69 at 3, whatever the tier. Rounding did not change this.
-- Single-round P&L is dominated by luck. Edge SD (2.0 to 2.8) is larger than its mean (0.9 to 1.7), and the edge strategy has positive P&L in only 37% to 56% of rounds. The game should show a decision-quality score alongside P&L.
+- Always buy or always sell loses about the half-spread (0.5 per round) in every setup. Without information, trading against the quote has no edge.
+- The edge strategy's mean P&L depends on dice seen, not total dice or hidden count: about +1.25 at 1 seen, +1.73 at 2, +2.10 at 3, whatever the tier. Rounding did not change this.
+- Single-round P&L is dominated by luck. Edge SD (2.2 to 3.2) is larger than its mean (1.2 to 2.1), and the edge strategy has positive P&L in only 49% to 67% of rounds. The game should show a decision-quality score alongside P&L.
 
 **Decided: round the bot's mid to the nearest 0.5** (config `level2.midRounding = 0.5`, ties half up, `floor(x / step + 0.5) * step` in both Python and Luau) so players can do the arithmetic in their heads. Quotes end in .0 or .5. Same seed and rounds, continuous versus rounded, averaged over setups with the same dice seen:
 
-| Seen | Buy (cont / rounded) | Sell (cont / rounded) | Edge (cont / rounded) | Trade% (cont / rounded) |
+| Seen (spread 2.0) | Buy (cont / rounded) | Sell (cont / rounded) | Edge (cont / rounded) | Trade% (cont / rounded) |
 |------|----------------------|-----------------------|-----------------------|-------------------------|
 | 1 | -0.999 / -0.999 | -1.001 / -1.001 | +0.877 / +0.879 | 66.6% / 58.4% |
 | 2 | -1.013 / -1.013 | -0.987 / -0.987 | +1.331 / +1.331 | 72.3% / 66.2% |
 | 3 | -0.996 / -0.996 | -1.004 / -1.004 | +1.687 / +1.686 | 76.4% / 70.5% |
 
-- Always buy / always sell: -1.003 / -0.997 rounded (-1.004 / -0.996 continuous). Still about -1.00.
+- Always buy / always sell: -1.003 / -0.997 rounded (-1.004 / -0.996 continuous). Still about -1.00. (Spread 2.0 figures; the rounding comparison was made before the spread change and the conclusions carry over.)
 - Mean edge by dice seen is unchanged; the edge still rises with dice seen.
 - Trade rate falls 6 to 8 points and win% falls about 5 to 6 points (37% to 56%). Fair value is also on the 0.5 grid, so it now often equals the bid or ask exactly. Those rounds are skips with zero edge, so mean edge is unchanged. Players will see more "skip" rounds.
-- Luau `TakerMath.makeQuote` (100,000 rounds per setup, seed 12345) matches within sampling noise: edge +0.874 / +1.321 / +1.692 and trade 58.4% / 65.9% / 70.7% at 1 / 2 / 3 seen; buy and sell -1.00 +/- 0.03.
+- At spread 2.0, Luau `TakerMath.makeQuote` matched within sampling noise (edge +0.874 / +1.321 / +1.692, trade 58.4% / 65.9% / 70.7% at 1 / 2 / 3 seen).
+
+**Decided: full spread 1.0 for all three tiers (was 2.0)**, so bid = mid - 0.5 and ask = mid + 0.5. Spread is now a per-tier config value (`tiers[].spread`), read by `TakerMath.makeQuote(tier, rng)`, not hardcoded. Why: at spread 2.0 skip was the best action in 35% to 38% of rounds with skip runs up to 13 in a row, which is a lot of "do nothing" rounds. At 1.0 it is 21% to 23%, with runs up to 7. Bid and ask stay on the 0.5 grid because the mid is already rounded to 0.5.
+
+Before and after (`python3 sim/level2_taker.py --spread 2.0` versus the default; seed 12345, 100,000 rounds per setup, rounded mid, averaged over setups with the same dice seen):
+
+| Metric | Spread 2.0 | Spread 1.0 |
+|--------|-----------|-----------|
+| Always buy / always sell (mean of 8 setups) | -1.003 / -0.997 | -0.503 / -0.497 |
+| Mean edge, 1 / 2 / 3 seen | +0.879 / +1.331 / +1.686 | +1.253 / +1.729 / +2.099 |
+| Trade rate, 1 / 2 / 3 seen | 58.4% / 66.2% / 70.5% | 75.0% / 79.2% / 82.2% |
+
+Best-action split per tier (hidden count uniform in the tier range):
+
+| Tier | Spread 2.0 Buy / Sell / Skip | Max skip run | Spread 1.0 Buy / Sell / Skip | Max skip run |
+|------|------------------------------|--------------|------------------------------|--------------|
+| 1 | 31.2% / 30.9% / 37.9% | 13 | 38.7% / 38.4% / 22.9% | 7 |
+| 2 | 32.1% / 32.8% / 35.2% | 10 | 39.0% / 39.6% / 21.3% | 7 |
+| 3 | 32.2% / 32.8% / 35.0% | 10 | 39.1% / 39.7% / 21.2% | 7 |
+
+- Both main findings hold: blind buy or sell costs about the half-spread (0.5 now, 1.0 before), and mean edge still rises with dice seen (+1.25 / +1.73 / +2.10). Edge is still independent of tier. The tighter spread lifts mean edge by +0.37 / +0.40 / +0.41 at 1 / 2 / 3 seen (half a point less given up per trade, and more trades).
+- Luck still dominates single rounds: edge SD 2.2 to 3.2 versus a mean of 1.2 to 2.1, with positive P&L in 49% to 67% of rounds.
+- Spreads 1.5 and 1.0 give identical best actions (the best-action table in the sim prints both). Fair value and mid are both on the 0.5 grid, so fair minus mid is a multiple of 0.5, and a buy needs a gap above 0.75 at 1.5 or above 0.5 at 1.0, which both mean 1.0 or more. P&L still differs, so a tier spread between 1.0 and 1.5 changes P&L but not which action is best.
+- Quotes at a per-tier spread that is not a multiple of 1.0 (e.g. 1.5) would put bid and ask on a 0.25 grid. Keep that in mind before tuning a tier to such a value.
+- Luau check: `TakerMath.makeQuote` (100,000 rounds per setup, seed 12345, real module in Play mode) matches within sampling noise: buy / sell -0.506 / -0.494 overall, edge +1.247 / +1.716 / +2.105 and trade 75.1% / 79.1% / 82.3% at 1 / 2 / 3 seen. Every bid and ask was on the 0.5 grid with ask - bid exactly 1.0.
 
 ### Maker findings
 

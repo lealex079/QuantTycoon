@@ -1,7 +1,8 @@
 """Level 2 (Taker) simulation.
 
 n dice, some hidden. A bot quotes a bid/ask centered on a mid = n x 3.5 plus a random
-continuous shift uniform in [-2, +2], with a spread of 2 (bid = mid - 1, ask = mid + 1).
+continuous shift uniform in [-2, +2], with a per-tier full spread (TIER_SPREAD, 1.0 for all
+tiers: bid = mid - 0.5, ask = mid + 0.5).
 The mid is then rounded to the nearest MID_ROUNDING (0.5) before the spread is applied, so
 quotes end in .0 or .5. Ties on a .25/.75 boundary round half up: floor(mid / step + 0.5) * step.
 The sim runs both the continuous and the rounded quote on the same rolls and shifts.
@@ -13,7 +14,10 @@ Strategies: always buy, always sell, always skip, and edge
 (buy if fair > ask, sell if fair < bid, otherwise skip).
 
 Setups come from the taker tiers in DESIGN.md. Run: python3 sim/level2_taker.py
+Pass --spread 2.0 to force one full spread on every tier (the old setting, for comparison).
 """
+
+import argparse
 
 import numpy as np
 
@@ -22,7 +26,8 @@ ROUNDS = 100_000
 SIDES = 6
 MEAN_DIE = (SIDES + 1) / 2  # 3.5
 SHIFT_MAX = 2
-SPREAD = 2.0
+# Full spread (ask - bid) per tier. Exported to LevelConfig tiers[].spread. Decided 1.0 (was 2.0).
+TIER_SPREAD = {1: 1.0, 2: 1.0, 3: 1.0}
 MID_ROUNDING = 0.5  # 0 = continuous mid
 
 
@@ -39,9 +44,9 @@ TIERS = [
 ]
 
 
-def settle(true_total, fair, center: np.ndarray, rounds: int) -> dict:
-    bid = center - SPREAD / 2
-    ask = center + SPREAD / 2
+def settle(true_total, fair, center: np.ndarray, rounds: int, spread: float) -> dict:
+    bid = center - spread / 2
+    ask = center + spread / 2
     buy_pnl = true_total - ask
     sell_pnl = bid - true_total
     do_buy = fair > ask
@@ -60,7 +65,7 @@ def settle(true_total, fair, center: np.ndarray, rounds: int) -> dict:
     return out
 
 
-def simulate(rng: np.random.Generator, dice: int, hidden: int, rounds: int) -> dict:
+def simulate(rng: np.random.Generator, dice: int, hidden: int, rounds: int, spread: float) -> dict:
     """Returns {"continuous": stats, "rounded": stats}, both on the same rolls and shifts."""
     rolls = rng.integers(1, SIDES + 1, size=(rounds, dice))
     true_total = rolls.sum(axis=1)
@@ -69,15 +74,17 @@ def simulate(rng: np.random.Generator, dice: int, hidden: int, rounds: int) -> d
     shift = rng.uniform(-SHIFT_MAX, SHIFT_MAX, size=rounds)
     center = dice * MEAN_DIE + shift
     return {
-        "continuous": settle(true_total, fair, center, rounds),
-        "rounded": settle(true_total, fair, round_mid(center, MID_ROUNDING), rounds),
+        "continuous": settle(true_total, fair, center, rounds, spread),
+        "rounded": settle(true_total, fair, round_mid(center, MID_ROUNDING), rounds, spread),
     }
 
 
-def main() -> None:
+def main(spread_override: float | None = None) -> None:
     rng = np.random.default_rng(SEED)
     print(f"Taker sim: {ROUNDS:,} rounds per setup, seed {SEED}")
-    print(f"Quote: mid = dice x 3.5 + continuous shift uniform in [-{SHIFT_MAX}, +{SHIFT_MAX}], spread {SPREAD:g}.")
+    spreads = {t: (spread_override if spread_override is not None else TIER_SPREAD[t]) for t in TIER_SPREAD}
+    spread_text = ", ".join(f"tier {t} {v:g}" for t, v in spreads.items())
+    print(f"Quote: mid = dice x 3.5 + continuous shift uniform in [-{SHIFT_MAX}, +{SHIFT_MAX}], full spread {spread_text}.")
     print(f"'rounded' snaps the mid to the nearest {MID_ROUNDING:g} (half up) before the spread; 'continuous' does not.")
     print("Each cell is mean / SD of P&L per round. Trade% = share of rounds edge trades.")
     print("Seen = dice - hidden. Win% = share of all rounds where edge P&L > 0 (skips count as not winning).\n")
@@ -88,7 +95,7 @@ def main() -> None:
     results = {}
     for tier, dice, hidden_options in TIERS:
         for hidden in hidden_options:
-            results[(tier, dice, hidden)] = simulate(rng, dice, hidden, ROUNDS)
+            results[(tier, dice, hidden)] = simulate(rng, dice, hidden, ROUNDS, spreads[tier])
     for mode in ["continuous", "rounded"]:
         print(f"=== {mode} ===")
         print(header)
@@ -171,4 +178,6 @@ def best_action_report() -> None:
 
 
 if __name__ == "__main__":
-    main()
+    parser = argparse.ArgumentParser()
+    parser.add_argument("--spread", type=float, default=None, help="full spread for every tier (default: TIER_SPREAD)")
+    main(parser.parse_args().spread)

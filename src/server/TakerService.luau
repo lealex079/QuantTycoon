@@ -117,7 +117,7 @@ function TakerService.startRound(key: number): Visible
 			table.insert(hidden, roll)
 		end
 	end
-	local quote = TakerMath.makeQuote(tierConfig.dice, mathRng)
+	local quote = TakerMath.makeQuote(state.tier, mathRng)
 
 	local id = state.nextRoundId
 	state.nextRoundId += 1
