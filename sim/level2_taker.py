@@ -111,6 +111,63 @@ def main() -> None:
     for mode in ["continuous", "rounded"]:
         rs = [both[mode] for both in results.values()]
         print(f"{mode:>10}: always-buy {np.mean([x['buy'][0] for x in rs]):+.3f}, always-sell {np.mean([x['sell'][0] for x in rs]):+.3f}")
+    best_action_report()
+
+
+BEST_ACTION_SPREADS = [2.0, 1.5, 1.0]
+
+
+def best_actions(fair: np.ndarray, center: np.ndarray, spread: float) -> np.ndarray:
+    """0 = buy, 1 = sell, 2 = skip. Same rule as TakerMath.bestAction (ties go to skip)."""
+    bid = center - spread / 2
+    ask = center + spread / 2
+    buy = (fair > ask) & (fair - ask >= bid - fair)
+    sell = ~buy & (fair < bid)
+    return np.where(buy, 0, np.where(sell, 1, 2))
+
+
+def run_lengths(is_skip: np.ndarray) -> np.ndarray:
+    """Lengths of maximal runs of consecutive True values, in round order."""
+    padded = np.concatenate(([0], is_skip.astype(np.int8), [0]))
+    edges = np.flatnonzero(np.diff(padded))
+    return edges[1::2] - edges[0::2]
+
+
+def best_action_report() -> None:
+    """Best-action shares and consecutive-skip runs per tier, for several spreads.
+
+    Each round draws its hidden count uniformly from the tier's range, as the game does. Uses its own
+    RNG (same seed) so the tables above are unchanged. Rounds are in play order, so runs are real
+    streaks of skips. All spreads share the same rolls, hidden counts and shifts.
+    """
+    rng = np.random.default_rng(SEED)
+    print(f"\n=== Best action by tier: {ROUNDS:,} rounds per tier, seed {SEED}, rounded mid, hidden count uniform in tier range ===")
+    print("Run = consecutive rounds whose best action is skip. Run columns are shares of runs; 'reach' = run length >= N.")
+    header = (
+        f"{'Tier':>4} {'Spread':>6} | {'Buy%':>6} {'Sell%':>6} {'Skip%':>6} | {'Runs':>6} | "
+        + " ".join(f"{'len=' + str(n):>6}" for n in (1, 2, 3, 4))
+        + f" {'len>=5':>6} | {'reach3':>6} {'reach4':>6} {'reach5':>6} | {'Max':>3}"
+    )
+    print(header)
+    print("-" * len(header))
+    for tier, dice, hidden_options in TIERS:
+        rolls = rng.integers(1, SIDES + 1, size=(ROUNDS, dice))
+        hidden = np.array(hidden_options)[rng.integers(0, len(hidden_options), size=ROUNDS)]
+        shift = rng.uniform(-SHIFT_MAX, SHIFT_MAX, size=ROUNDS)
+        seen_mask = np.arange(dice)[None, :] >= hidden[:, None]
+        fair = (rolls * seen_mask).sum(axis=1) + hidden * MEAN_DIE
+        center = round_mid(dice * MEAN_DIE + shift, MID_ROUNDING)
+        for spread in BEST_ACTION_SPREADS:
+            best = best_actions(fair, center, spread)
+            runs = run_lengths(best == 2)
+            n = len(runs)
+            share = lambda mask: float(mask.sum()) / n if n else 0.0
+            cells = " ".join(f"{share(runs == k):>6.1%}" for k in (1, 2, 3, 4))
+            print(
+                f"{tier:>4} {spread:>6.1f} | {(best == 0).mean():>6.1%} {(best == 1).mean():>6.1%} {(best == 2).mean():>6.1%} | {n:>6} | "
+                f"{cells} {share(runs >= 5):>6.1%} | {share(runs >= 3):>6.1%} {share(runs >= 4):>6.1%} {share(runs >= 5):>6.1%} | {int(runs.max()) if n else 0:>3}"
+            )
+        print()
 
 
 if __name__ == "__main__":
