@@ -189,4 +189,11 @@ Source: `sim/level34_maker.py`, 100,000 rounds per setup, seed 12345, half-sprea
 
 Park new ideas here so they don't derail the current step.
 
--
+- **Tutorial:** a skippable interactive playthrough.
+  - 3-4 scripted Taker rounds with fixed dice and a fixed quote, server-driven tutorial mode, with a hint level in the payload.
+  - Scaffolding fades across rounds: show fair value being built, then only the per-die average, then nothing.
+  - Visible Skip button at all times.
+  - Optional two-question check that skips the tutorial automatically if answered correctly.
+  - Saved completed flag.
+  - Replayable from a menu.
+  - Level 1 (Hidden Value) may serve as the on-ramp to fair value.
