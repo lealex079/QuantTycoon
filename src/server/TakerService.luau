@@ -28,6 +28,7 @@ export type Settlement = {
 	hidden: { number },
 	action: TakerMath.Action,
 	pnl: number,
+	fairValue: number, -- seen total + hidden count x mean side; safe to send once the round is settled
 	edge: number, -- expected edge of the action taken, versus fair value
 	bestAction: TakerMath.Action,
 	goodCall: boolean,
@@ -195,7 +196,8 @@ function TakerService.submitAction(key: number, roundId: any, action: any): Subm
 			hidden = table.clone(round.hidden),
 			action = taken,
 			pnl = pnl,
-			edge = TakerMath.edge(taken, fair, round.bid, round.ask),
+			fairValue = fair,
+				edge = TakerMath.edge(taken, fair, round.bid, round.ask),
 			bestAction = best,
 			goodCall = goodCall,
 			streak = state.streak,

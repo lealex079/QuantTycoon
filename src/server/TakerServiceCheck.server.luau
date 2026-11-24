@@ -29,7 +29,8 @@ do
 	local s = TakerService.submitAction(9001, v.roundId, bestFor(v))
 	local r = s.result
 	report("valid round", s.ok and r ~= nil and r.goodCall and #r.hidden == v.hiddenCount
-		and r.trueTotal == sumOf(v.seen) + sumOf(r.hidden) and v.tier == 1)
+		and r.trueTotal == sumOf(v.seen) + sumOf(r.hidden) and v.tier == 1
+		and math.abs(r.fairValue - (sumOf(v.seen) + v.hiddenCount * 3.5)) < 1e-9)
 end
 
 -- 2. invalid action strings

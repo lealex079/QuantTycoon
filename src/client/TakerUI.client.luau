@@ -24,6 +24,8 @@ type Settlement = {
 	hidden: { number },
 	action: Action,
 	pnl: number,
+	fairValue: number,
+	edge: number,
 	bestAction: Action,
 	goodCall: boolean,
 	streak: number,
@@ -199,16 +201,18 @@ skipButton.Text = UiText.skip
 local resultFrame = newFrame(rightCol, "Result", UDim2.fromScale(0, 0), UDim2.fromScale(1, 1))
 local resultList = newFrame(resultFrame, "Lines", UDim2.fromScale(0, 0), UDim2.fromScale(1, 0.78))
 newList(resultList, Enum.FillDirection.Vertical, 0)
-local actionLine = newLabel(resultList, "Action", UDim2.new(), UDim2.fromScale(1, 0.18), COLORS.muted)
-local pnlLine = newLabel(resultList, "Pnl", UDim2.new(), UDim2.fromScale(1, 0.24), COLORS.text)
-local verdictLine = newLabel(resultList, "Verdict", UDim2.new(), UDim2.fromScale(1, 0.24), COLORS.text)
-local streakLine = newLabel(resultList, "Streak", UDim2.new(), UDim2.fromScale(1, 0.16), COLORS.text)
-local sessionLine = newLabel(resultList, "Session", UDim2.new(), UDim2.fromScale(1, 0.18), COLORS.muted)
+local actionLine = newLabel(resultList, "Action", UDim2.new(), UDim2.fromScale(1, 0.13), COLORS.muted)
+local pnlLine = newLabel(resultList, "Pnl", UDim2.new(), UDim2.fromScale(1, 0.2), COLORS.text)
+local fairLine = newLabel(resultList, "FairEdge", UDim2.new(), UDim2.fromScale(1, 0.13), COLORS.muted)
+local verdictLine = newLabel(resultList, "Verdict", UDim2.new(), UDim2.fromScale(1, 0.2), COLORS.text)
+local streakLine = newLabel(resultList, "Streak", UDim2.new(), UDim2.fromScale(1, 0.13), COLORS.text)
+local sessionLine = newLabel(resultList, "Session", UDim2.new(), UDim2.fromScale(1, 0.13), COLORS.muted)
 actionLine.LayoutOrder = 1
 pnlLine.LayoutOrder = 2
-verdictLine.LayoutOrder = 3
-streakLine.LayoutOrder = 4
-sessionLine.LayoutOrder = 5
+fairLine.LayoutOrder = 3
+verdictLine.LayoutOrder = 4
+streakLine.LayoutOrder = 5
+sessionLine.LayoutOrder = 6
 local continueButton = newButton(resultFrame, "Continue", UDim2.fromScale(1, 0.18), COLORS.cont)
 continueButton.Position = UDim2.fromScale(0, 0.82)
 continueButton.Text = UiText.continue
@@ -354,18 +358,16 @@ local function showResult(round: Visible, result: Settlement)
 	pnlLine.Text = UiText.pnl(result.pnl)
 	pnlLine.TextColor3 = if result.pnl > 0 then COLORS.good elseif result.pnl < 0 then COLORS.bad else COLORS.text
 
-	if result.goodCall then
-		verdictLine.Text = UiText.bestMove
-		verdictLine.TextColor3 = COLORS.good
-	else
-		verdictLine.Text = UiText.notBest(actionText(result.bestAction, round))
-		verdictLine.TextColor3 = COLORS.bad
-	end
+	fairLine.Text = UiText.fairEdge(result.fairValue, result.edge)
 
-	local tierNow = result.newTier or round.tier
+	verdictLine.Text = UiText.verdict(result.goodCall, result.pnl, actionText(result.bestAction, round))
+	verdictLine.TextColor3 = if result.goodCall then COLORS.good else COLORS.bad
+
+	-- After a promotion the banner is the news; streak progress for the new tier waits for the next round.
 	local target = result.streakTarget
+	streakLine.Visible = result.newTier == nil
 	if target then
-		streakLine.Text = UiText.streak(result.streak, target, tierNow + 1)
+		streakLine.Text = UiText.streak(result.streak, target, round.tier + 1)
 	else
 		streakLine.Text = UiText.topStreak(result.streak)
 	end
@@ -416,20 +418,24 @@ skipButton.Activated:Connect(function()
 	submit("skip")
 end)
 
-promoContinue.Activated:Connect(function()
-	promoPending = false
-	promoOverlay.Visible = false
-	setButtonEnabled(continueButton, true)
-end)
-
-continueButton.Activated:Connect(function()
+local function continueToNextRound()
 	if busy or promoPending then
 		return
 	end
 	busy = true
 	setButtonEnabled(continueButton, false)
 	requestRound:FireServer()
+end
+
+-- Same action as the result screen's Continue; the result screen is hidden so it is never seen twice.
+promoContinue.Activated:Connect(function()
+	promoPending = false
+	promoOverlay.Visible = false
+	resultFrame.Visible = false
+	continueToNextRound()
 end)
+
+continueButton.Activated:Connect(continueToNextRound)
 
 roundStarted.OnClientEvent:Connect(function(round: Visible)
 	showRound(round)

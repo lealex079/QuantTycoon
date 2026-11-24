@@ -10,7 +10,6 @@ UiText.askCaption = "Bot asks (you buy)"
 UiText.skip = "Skip"
 UiText.skipped = "Skip"
 UiText.continue = "Continue"
-UiText.bestMove = "Best move!"
 UiText.topTierStreak = "Top tier reached"
 
 local function round2(value: number): number
@@ -54,8 +53,20 @@ function UiText.pnl(pnl: number): string
 	return "P&L " .. UiText.signed(pnl)
 end
 
-function UiText.notBest(bestText: string): string
-	return "Not the best move. Best was: " .. bestText
+function UiText.fairEdge(fair: number, edge: number): string
+	return string.format("Fair value %s | Edge %s", UiText.number(fair), UiText.signed(edge))
+end
+
+-- One line tying the decision to the outcome.
+function UiText.verdict(goodCall: boolean, pnl: number, bestText: string): string
+	if not goodCall then
+		return "A better move was " .. bestText .. "."
+	elseif pnl < 0 then
+		return "Right call, unlucky dice."
+	elseif pnl > 0 then
+		return "Right call, and it paid."
+	end
+	return "Right call."
 end
 
 function UiText.streak(streak: number, target: number, nextTier: number): string
